@@ -37,17 +37,17 @@ Key Features Implemented
 
 4. Technical Implementation
 
-    Single PHP file for easy deployment
-
-    MySQL database with secure table structures
-
-    Password hashing for security
-
-    Role-based access control
-
-    Timer functionality for exams
-
-    Automatic result calculation
+            Single PHP file for easy deployment
+        
+            MySQL database with secure table structures
+        
+            Password hashing for security
+        
+            Role-based access control
+        
+            Timer functionality for exams
+        
+            Automatic result calculation
 
 How to Use
 For Students:
