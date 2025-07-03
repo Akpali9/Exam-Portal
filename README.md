@@ -1,24 +1,24 @@
 Key Features Implemented
 1. Student Exam Restrictions
 
-    Students can take each exam only once
-
-    Database enforces uniqueness with UNIQUE KEY unique_exam_student
-
-    Visual indication of completed exams
-
-    Students only see exams they haven't taken yet
+        Students can take each exam only once
+    
+        Database enforces uniqueness with UNIQUE KEY unique_exam_student
+    
+        Visual indication of completed exams
+    
+        Students only see exams they haven't taken yet
 
 2. Admin Management System
 
-    Admins can create other admins through "Manage Users" section
-
-    Admins can register students directly
-
-    Role-based access control for all features
-
-    Visual distinction between admins and students
-
+        Admins can create other admins through "Manage Users" section
+    
+        Admins can register students directly
+    
+        Role-based access control for all features
+    
+        Visual distinction between admins and students
+    
 3. Enhanced UI/UX
 
     Separate login backgrounds:
