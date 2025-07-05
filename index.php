@@ -33,6 +33,8 @@ $tables = [
         duration INT NOT NULL COMMENT 'Duration in minutes',
         created_by INT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        start_time DATETIME NOT NULL,
+        end_time DATETIME NOT NULL,
         FOREIGN KEY (created_by) REFERENCES users(id)
     )",
     
@@ -117,6 +119,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['message'] = "Error: " . $conn->error;
             $_SESSION['message_type'] = "error";
         }
+            $avatar = handleAvatarUpload();
+    
+    $sql = "INSERT INTO users (name, email, password, role, avatar) 
+            VALUES ('$name', '$email', '$password', '$role', " . 
+            ($avatar ? "'$avatar'" : "NULL") . ")";
     }
     
     // User Login
@@ -129,11 +136,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         if ($result->num_rows > 0) {
             $user = $result->fetch_assoc();
-            if (password_verify($password, $user['password'])) {
-                $_SESSION['user_id'] = $user['id'];
-                $_SESSION['name'] = $user['name'];
-                $_SESSION['role'] = $user['role'];
-                $_SESSION['email'] = $user['email'];
+            // In login handler
+if (password_verify($password, $user['password'])) {
+    $_SESSION['user_id'] = $user['id'];
+    $_SESSION['name'] = $user['name'];
+    $_SESSION['role'] = $user['role'];
+    $_SESSION['email'] = $user['email'];
+    $_SESSION['avatar'] = $user['avatar']; 
+
                 header("Location: " . $_SERVER['PHP_SELF']);
                 exit();
             } else {
@@ -153,8 +163,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $duration = intval($_POST['duration']);
         $admin_id = $_SESSION['user_id'];
         
-        $sql = "INSERT INTO exams (title, description, duration, created_by) 
-                VALUES ('$title', '$description', $duration, $admin_id)";
+        // Get start and end times
+        $start_time = $conn->real_escape_string($_POST['start_time']);
+        $end_time = $conn->real_escape_string($_POST['end_time']);
+        
+        $sql = "INSERT INTO exams (title, description, duration, created_by, start_time, end_time) 
+                VALUES ('$title', '$description', $duration, $admin_id, '$start_time', '$end_time')";
         
         if ($conn->query($sql)) {
             $_SESSION['message'] = "Exam created successfully!";
@@ -280,13 +294,34 @@ function getExams($conn, $admin_id = null) {
 }
 
 function getAvailableExams($conn, $student_id) {
+    $current_time = date('Y-m-d H:i:s');
     $sql = "SELECT e.* 
             FROM exams e
             WHERE NOT EXISTS (
                 SELECT 1 
                 FROM exam_results er 
                 WHERE er.exam_id = e.id AND er.student_id = $student_id
-            )";
+            )
+            AND e.start_time <= '$current_time'
+            AND e.end_time >= '$current_time'";
+    $result = $conn->query($sql);
+    $exams = [];
+    while ($row = $result->fetch_assoc()) {
+        $exams[] = $row;
+    }
+    return $exams;
+}
+
+function getUpcomingExams($conn, $student_id) {
+    $current_time = date('Y-m-d H:i:s');
+    $sql = "SELECT e.* 
+            FROM exams e
+            WHERE NOT EXISTS (
+                SELECT 1 
+                FROM exam_results er 
+                WHERE er.exam_id = e.id AND er.student_id = $student_id
+            )
+            AND e.start_time > '$current_time'";
     $result = $conn->query($sql);
     $exams = [];
     while ($row = $result->fetch_assoc()) {
@@ -309,6 +344,36 @@ function getQuestions($conn, $exam_id) {
         $questions[] = $row;
     }
     return $questions;
+}
+// Handle avatar upload function
+function handleAvatarUpload() {
+    if (isset($_FILES['avatar']) && $_FILES['avatar']['error'] === UPLOAD_ERR_OK) {
+        $targetDir = "avatars/";
+        if (!is_dir($targetDir)) {
+            mkdir($targetDir, 0755, true);
+        }
+        
+        $filename = uniqid() . '_' . basename($_FILES['avatar']['name']);
+        $targetFile = $targetDir . $filename;
+        $imageFileType = strtolower(pathinfo($targetFile, PATHINFO_EXTENSION));
+        
+        // Check if image file
+        $check = getimagesize($_FILES['avatar']['tmp_name']);
+        if ($check === false) {
+            return null;
+        }
+        
+        // Allow certain file formats
+        if (!in_array($imageFileType, ['jpg', 'png', 'jpeg', 'gif'])) {
+            return null;
+        }
+        
+        // Try to upload file
+        if (move_uploaded_file($_FILES['avatar']['tmp_name'], $targetFile)) {
+            return $targetFile;
+        }
+    }
+    return null;
 }
 
 function getExamResults($conn, $exam_id) {
@@ -944,6 +1009,26 @@ $action = isset($_GET['action']) ? $_GET['action'] : 'home';
             margin-bottom: 15px;
         }
         
+.avatar, .user-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--primary);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 18px;
+}
+
+.avatar img, .user-avatar img {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+}
+        
         .user-avatar {
             width: 50px;
             height: 50px;
@@ -1016,6 +1101,44 @@ $action = isset($_GET['action']) ? $_GET['action'] : 'home';
                 padding: 0 15px;
             }
         }
+        .datetime-input {
+            display: flex;
+            gap: 15px;
+        }
+        
+        .datetime-input input {
+            flex: 1;
+        }
+        
+        .exam-status {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-top: 8px;
+        }
+        
+        .status-upcoming {
+            background: rgba(252, 163, 17, 0.15);
+            color: #ca6702;
+        }
+        
+        .status-active {
+            background: rgba(76, 201, 240, 0.15);
+            color: #0a9396;
+        }
+        
+        .status-ended {
+            background: rgba(247, 37, 133, 0.15);
+            color: #9d0208;
+        }
+        
+        .exam-schedule {
+            margin-top: 10px;
+            font-size: 14px;
+            color: var(--gray);
+        }
     </style>
 </head>
 <body class="<?php 
@@ -1074,7 +1197,7 @@ $action = isset($_GET['action']) ? $_GET['action'] : 'home';
                     </div>
                     
                     <div class="tab-content" id="register-tab">
-                        <form method="POST">
+                        <form method="POST" enctype="multipart/form-data">
                             <div class="form-group">
                                 <label for="name">Full Name</label>
                                 <input type="text" id="name" name="name" required placeholder="Enter your full name">
@@ -1083,6 +1206,10 @@ $action = isset($_GET['action']) ? $_GET['action'] : 'home';
                                 <label for="reg_email">Email Address</label>
                                 <input type="email" id="reg_email" name="email" required placeholder="Enter your email">
                             </div>
+                            <div class="form-group">
+        <label for="avatar">Profile Picture (optional)</label>
+        <input type="file" id="avatar" name="avatar" accept="image/*">
+    </div>
                             <div class="form-group">
                                 <label for="reg_password">Password</label>
                                 <input type="password" id="reg_password" name="password" required placeholder="Create a password">
@@ -1117,7 +1244,7 @@ $action = isset($_GET['action']) ? $_GET['action'] : 'home';
             <?php if ($_SESSION['role'] === 'admin'): ?>
                 <!-- Admin Dashboard -->
                 <header>
-                    
+
                     <nav>
                         <ul>
                             <li><a href="?action=home"><i class="fas fa-home"></i> Dashboard</a></li>
@@ -1125,14 +1252,19 @@ $action = isset($_GET['action']) ? $_GET['action'] : 'home';
                             <li><a href="?action=manage_exams"><i class="fas fa-tasks"></i> Manage Exams</a></li>
                             <li><a href="?action=view_results"><i class="fas fa-chart-bar"></i> Results</a></li>
                             <li><a href="?action=manage_users"><i class="fas fa-users"></i> Users</a></li>
-                            <div class="user-info">
-                        <div class="avatar"><?php echo substr($_SESSION['name'], 0, 1); ?></div>
-                        <span><?php echo htmlspecialchars($_SESSION['name']); ?></span>
-                        <a href="?logout=1" class="btn btn-light" style="padding: 8px 16px;"><i class="fas fa-sign-out-alt"></i></a>
-                    </div>
+                             <div class="user-info">
+                       <?php if (!empty($_SESSION['avatar'])): ?>
+        <img src="<?= $_SESSION['avatar'] ?>" class="avatar" alt="Profile Picture">
+    <?php else: ?>
+        <div class="avatar"><?= substr($_SESSION['name'], 0, 1) ?></div>
+    <?php endif; ?>
+    <span><?= htmlspecialchars($_SESSION['name']) ?></span>
+    <a href="?logout=1" class="btn btn-light" style="padding: 8px 16px;"><i class="fas fa-sign-out-alt"></i></a>
+</div>
                         </ul>
+                        
                     </nav>
-                    
+                   
                 </header>
                 
                 <?php 
@@ -1159,6 +1291,21 @@ $action = isset($_GET['action']) ? $_GET['action'] : 'home';
                                     <label for="duration">Duration (minutes)</label>
                                     <input type="number" id="duration" name="duration" min="1" required placeholder="Enter exam duration">
                                 </div>
+                                
+                                <div class="form-group">
+                                    <label>Exam Schedule</label>
+                                    <div class="datetime-input">
+                                        <div style="flex:1;">
+                                            <label for="start_time">Start Time</label>
+                                            <input type="datetime-local" id="start_time" name="start_time" required>
+                                        </div>
+                                        <div style="flex:1;">
+                                            <label for="end_time">End Time</label>
+                                            <input type="datetime-local" id="end_time" name="end_time" required>
+                                        </div>
+                                    </div>
+                                </div>
+                                
                                 <button type="submit" name="create_exam" class="btn">Create Exam</button>
                             </form>
                         </div>
@@ -1176,6 +1323,15 @@ $action = isset($_GET['action']) ? $_GET['action'] : 'home';
                                 <div class="card-header">
                                     <h2 class="card-title"><i class="fas fa-edit"></i> Manage Exam: <?php echo htmlspecialchars($exam['title']); ?></h2>
                                     <a href="?action=manage_exams" class="btn btn-secondary">Back to Exams</a>
+                                </div>
+                                
+                                <div class="exam-schedule">
+                                    <strong>Schedule:</strong> 
+                                    <?php 
+                                        echo date('M d, Y h:i A', strtotime($exam['start_time'])); 
+                                        echo ' to ';
+                                        echo date('M d, Y h:i A', strtotime($exam['end_time'])); 
+                                    ?>
                                 </div>
                                 
                                 <form method="POST">
@@ -1280,6 +1436,13 @@ $action = isset($_GET['action']) ? $_GET['action'] : 'home';
                                     <div class="exam-card">
                                         <div class="exam-header">
                                             <div class="exam-title"><?php echo htmlspecialchars($exam['title']); ?></div>
+                                            <div class="exam-schedule">
+                                                <?php 
+                                                    echo date('M d, h:i A', strtotime($exam['start_time'])); 
+                                                    echo ' - ';
+                                                    echo date('h:i A', strtotime($exam['end_time'])); 
+                                                ?>
+                                            </div>
                                         </div>
                                         <div class="exam-body">
                                             <div class="exam-meta">
@@ -1344,7 +1507,11 @@ $action = isset($_GET['action']) ? $_GET['action'] : 'home';
                                 <?php foreach ($admins as $admin): ?>
                                     <div class="user-card">
                                         <div class="user-header">
+                                             <?php if (!empty($admin['avatar'])): ?>
+        <img src="<?= $admin['avatar'] ?>" class="user-avatar" alt="User Avatar">
+    <?php else: ?>
                                             <div class="user-avatar"><?php echo substr($admin['name'], 0, 1); ?></div>
+                                                <?php endif; ?>
                                             <div class="user-details">
                                                 <div class="user-name"><?php echo htmlspecialchars($admin['name']); ?></div>
                                                 <div class="user-email"><?php echo htmlspecialchars($admin['email']); ?></div>
@@ -1439,14 +1606,35 @@ $action = isset($_GET['action']) ? $_GET['action'] : 'home';
                             
                             <?php if (count($exams) > 0): ?>
                                 <div class="grid">
-                                    <?php foreach ($exams as $exam): ?>
+                                    <?php foreach ($exams as $exam): 
+                                        $current_time = time();
+                                        $start_time = strtotime($exam['start_time']);
+                                        $end_time = strtotime($exam['end_time']);
+                                        
+                                        $status = '';
+                                        if ($current_time < $start_time) {
+                                            $status = '<span class="exam-status status-upcoming">Upcoming</span>';
+                                        } elseif ($current_time > $end_time) {
+                                            $status = '<span class="exam-status status-ended">Ended</span>';
+                                        } else {
+                                            $status = '<span class="exam-status status-active">Active</span>';
+                                        }
+                                    ?>
                                         <div class="exam-card">
                                             <div class="exam-header">
                                                 <div class="exam-title"><?php echo htmlspecialchars($exam['title']); ?></div>
-                                                <div>Duration: <?php echo $exam['duration']; ?> minutes</div>
+                                                <div><?php echo $status; ?></div>
                                             </div>
                                             <div class="exam-body">
                                                 <p><?php echo htmlspecialchars($exam['description']); ?></p>
+                                                <div class="exam-schedule">
+                                                    <strong>Schedule:</strong> 
+                                                    <?php 
+                                                        echo date('M d, Y h:i A', strtotime($exam['start_time'])); 
+                                                        echo ' to ';
+                                                        echo date('M d, Y h:i A', strtotime($exam['end_time'])); 
+                                                    ?>
+                                                </div>
                                                 <div class="exam-meta">
                                                     <a href="?action=manage_exam&exam_id=<?php echo $exam['id']; ?>" class="btn">Manage Exam</a>
                                                     <a href="?action=view_results&exam_id=<?php echo $exam['id']; ?>" class="btn btn-secondary">View Results</a>
@@ -1492,6 +1680,25 @@ $action = isset($_GET['action']) ? $_GET['action'] : 'home';
                             $exam_id = intval($_GET['exam_id']);
                             $exam = getExam($conn, $exam_id);
                             $questions = getQuestions($conn, $exam_id);
+                            
+                            // Check if exam is available
+                            $current_time = time();
+                            $start_time = strtotime($exam['start_time']);
+                            $end_time = strtotime($exam['end_time']);
+                            
+                            if ($current_time < $start_time) {
+                                $_SESSION['message'] = "This exam is not available yet. It starts at " . date('M d, Y h:i A', $start_time);
+                                $_SESSION['message_type'] = "error";
+                                header("Location: " . $_SERVER['PHP_SELF'] . "?action=home");
+                                exit();
+                            }
+                            
+                            if ($current_time > $end_time) {
+                                $_SESSION['message'] = "This exam has ended. It was available until " . date('M d, Y h:i A', $end_time);
+                                $_SESSION['message_type'] = "error";
+                                header("Location: " . $_SERVER['PHP_SELF'] . "?action=home");
+                                exit();
+                            }
                             ?>
                             <script>
                                 // Timer functionality
@@ -1529,6 +1736,10 @@ $action = isset($_GET['action']) ? $_GET['action'] : 'home';
                                 </div>
                                 <p><?php echo htmlspecialchars($exam['description']); ?></p>
                                 <p class="exam-meta">Time Remaining: <span id="time-display"><?php echo $exam['duration']; ?>:00</span></p>
+                                <p class="exam-schedule">
+                                    <strong>Exam available until:</strong> 
+                                    <?php echo date('M d, Y h:i A', strtotime($exam['end_time'])); ?>
+                                </p>
                             </div>
                             
                             <form method="POST" id="examForm">
@@ -1604,12 +1815,12 @@ $action = isset($_GET['action']) ? $_GET['action'] : 'home';
                     default:
                         // Student Dashboard Content
                         $exams = getAvailableExams($conn, $_SESSION['user_id']);
-                        $completed_exams = getExams($conn); // Simplified for demo
+                        $upcoming_exams = getUpcomingExams($conn, $_SESSION['user_id']);
                         ?>
                         <div class="card">
                             <div class="card-header">
                                 <h2 class="card-title"><i class="fas fa-book-open"></i> Available Exams</h2>
-                                <p>Welcome, <?php echo htmlspecialchars($_SESSION['name']); ?>! You can take each exam only once.</p>
+                                <p>Welcome, <?php echo htmlspecialchars($_SESSION['name']); ?>! You can take each exam only once during its scheduled time.</p>
                             </div>
                             
                             <?php if (count($exams) > 0): ?>
@@ -1618,10 +1829,14 @@ $action = isset($_GET['action']) ? $_GET['action'] : 'home';
                                         <div class="exam-card">
                                             <div class="exam-header">
                                                 <div class="exam-title"><?php echo htmlspecialchars($exam['title']); ?></div>
-                                                <div>Duration: <?php echo $exam['duration']; ?> minutes</div>
+                                                <span class="exam-status status-active">Active</span>
                                             </div>
                                             <div class="exam-body">
                                                 <p><?php echo htmlspecialchars($exam['description']); ?></p>
+                                                <div class="exam-schedule">
+                                                    <strong>Available until:</strong> 
+                                                    <?php echo date('M d, Y h:i A', strtotime($exam['end_time'])); ?>
+                                                </div>
                                                 <div class="exam-meta">
                                                     <a href="?action=take_exam&exam_id=<?php echo $exam['id']; ?>" class="btn">Take Exam</a>
                                                 </div>
@@ -1631,27 +1846,32 @@ $action = isset($_GET['action']) ? $_GET['action'] : 'home';
                                 </div>
                             <?php else: ?>
                                 <div class="message success">
-                                    <i class="fas fa-check-circle"></i> You have completed all available exams!
+                                    <i class="fas fa-check-circle"></i> No exams currently available. Check back later!
                                 </div>
                             <?php endif; ?>
                         </div>
                         
-                        <?php if (count($completed_exams) > 0): ?>
+                        <?php if (count($upcoming_exams) > 0): ?>
                         <div class="card">
                             <div class="card-header">
-                                <h2 class="card-title"><i class="fas fa-history"></i> Completed Exams</h2>
+                                <h2 class="card-title"><i class="fas fa-calendar"></i> Upcoming Exams</h2>
+                                <p>These exams will become available at the scheduled start time.</p>
                             </div>
                             <div class="grid">
-                                <?php foreach ($completed_exams as $exam): ?>
+                                <?php foreach ($upcoming_exams as $exam): ?>
                                     <div class="exam-card">
-                                        <div class="exam-header" style="background: linear-gradient(90deg, var(--success) 0%, var(--success-light) 100%);">
+                                        <div class="exam-header">
                                             <div class="exam-title"><?php echo htmlspecialchars($exam['title']); ?></div>
-                                            <div>Completed</div>
+                                            <span class="exam-status status-upcoming">Upcoming</span>
                                         </div>
                                         <div class="exam-body">
+                                            <p><?php echo htmlspecialchars($exam['description']); ?></p>
+                                            <div class="exam-schedule">
+                                                <strong>Starts at:</strong> 
+                                                <?php echo date('M d, Y h:i A', strtotime($exam['start_time'])); ?>
+                                            </div>
                                             <div class="exam-meta">
-                                                <span>View your result:</span>
-                                                <a href="?action=exam_result" class="btn btn-light">View Result</a>
+                                                <button class="btn" disabled>Not available yet</button>
                                             </div>
                                         </div>
                                     </div>
