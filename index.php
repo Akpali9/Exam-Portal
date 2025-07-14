@@ -346,7 +346,7 @@ function getQuestions($conn, $exam_id) {
     }
     return $questions;
 }
-// Handle avatar upload function
+// Handle avatar upload function in the profile
 function handleAvatarUpload() {
     if (isset($_FILES['avatar']) && $_FILES['avatar']['error'] === UPLOAD_ERR_OK) {
         $targetDir = "avatars/";
