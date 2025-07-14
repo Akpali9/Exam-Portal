@@ -81,6 +81,7 @@ foreach ($tables as $sql) {
 
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    
     // User Registration
     if (isset($_POST['register'])) {
         $name = $conn->real_escape_string($_POST['name']);
