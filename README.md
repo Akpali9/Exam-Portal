@@ -21,6 +21,7 @@ Key Features Implemented
     
 3. Enhanced UI/UX
 
+
                     Separate login backgrounds:
                 
                         Admin login: Dark professional theme
